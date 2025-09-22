@@ -1,8 +1,18 @@
 import tkinter as tk
 from tkinter import PhotoImage
 from pathlib import Path
-from PIL import Image, ImageTk
+import requests
 
+
+# endpoint khusus untuk health check
+url_health = "http://10.46.7.51:8000/api/connection/status"
+def is_server_online(url_health, timeout=2):
+    try:
+        response = requests.get(url_health, timeout=timeout)
+        return response.status_code == 200
+    except requests.exceptions.RequestException:
+        return False
+    
 class MainPage(tk.Frame):
     def __init__(self, parent, controller):
 
@@ -123,8 +133,7 @@ class LocationPage(tk.Frame):
 
         # Tombol Back di pojok kiri atas
         try:
-            img = Image.open(relative_to_assets("back.png")).resize((50, 50))
-            back_img = ImageTk.PhotoImage(img)
+            back_img = PhotoImage(file=relative_to_assets("back.png")).subsample(4, 4)
             back_btn = tk.Button(self, image=back_img, borderwidth=0, highlightthickness=0, relief="flat",
                                 command=lambda: controller.show_frame(MainPage))
             back_btn.place(x=20, y=20, width=50, height=50)
@@ -211,8 +220,7 @@ class TypePage(tk.Frame):
 
         # Tombol Back di pojok kiri atas
         try:
-            img = Image.open(relative_to_assets("back.png")).resize((50, 50))
-            back_img = ImageTk.PhotoImage(img)
+            back_img = PhotoImage(file=relative_to_assets("back.png")).subsample(4, 4)
             back_btn = tk.Button(self, image=back_img, borderwidth=0, highlightthickness=0, relief="flat",
                                 command=lambda: controller.show_frame(LocationPage))
             back_btn.place(x=20, y=20, width=50, height=50)
@@ -388,8 +396,7 @@ class WeighPage(tk.Frame):
 
         # Tombol restart dan undo di pojok kanan atas
         try:
-            restart_img = Image.open(relative_to_assets("restart.png")).resize((40, 40))
-            restart_icon = ImageTk.PhotoImage(restart_img)
+            restart_icon = PhotoImage(file=relative_to_assets("restart.png")).subsample(5, 5)
             restart_btn = tk.Button(self, image=restart_icon, borderwidth=0, highlightthickness=0, relief="flat",
                                     command=lambda: self.handle_reset())
             restart_btn.place(x=1024-120, y=30, width=40, height=40)
@@ -403,8 +410,7 @@ class WeighPage(tk.Frame):
             canvas.create_text(1024-100, 75, text="Restart", font=("Arial", 10), fill="#343434")
 
         try:
-            undo_img = Image.open(relative_to_assets("undo.png")).resize((40, 40))
-            undo_icon = ImageTk.PhotoImage(undo_img)
+            undo_icon = PhotoImage(file=relative_to_assets("undo.png")).subsample(5, 5)
             undo_btn = tk.Button(self, image=undo_icon, borderwidth=0, highlightthickness=0, relief="flat",
                                  command=lambda: self.handle_undo())
             undo_btn.place(x=1024-65, y=30, width=40, height=40)
@@ -419,25 +425,57 @@ class WeighPage(tk.Frame):
 
         self.canvas = canvas
         self.auto_update_job = None
+        # >>>> TAMBAHKAN BAGIAN STATUS ICON DI SINI <<<<
+        self.auto_update_job = None
+        self.status_update_job = None  # buat status server
 
+        try:
+            self.online_icon = PhotoImage(file=relative_to_assets("online.png")).subsample(6, 6)
+            self.offline_icon = PhotoImage(file=relative_to_assets("offline.png")).subsample(6, 6)
+
+            # tombol status (pojok kiri atas)
+            self.status_btn = tk.Label(self, image=self.offline_icon, bg="white")
+            self.status_btn.place(x=20, y=20, width=30, height=30)
+
+        except Exception as e:
+            print(f"Error loading status icons: {e}")
+            self.status_btn = tk.Label(self, text="?", bg="white")
+            self.status_btn.place(x=20, y=20, width=30, height=30)
+
+        self.canvas = canvas
     def start_auto_update(self):
+        # stop dulu biar ga double loop
         if self.auto_update_job is not None:
             self.after_cancel(self.auto_update_job)
+        if self.status_update_job is not None:
+            self.after_cancel(self.status_update_job)
+
         self.auto_update()
-        # Start the auto update loop
-        print("Auto update started.")
+        self.update_server_status()
+
+        print("Auto update + server status started.")
     
     def stop_auto_update(self):
         if self.auto_update_job is not None:
             self.after_cancel(self.auto_update_job)
             self.auto_update_job = None
+        if self.status_update_job is not None:
+            self.after_cancel(self.status_update_job)
+            self.status_update_job = None
     
     def auto_update(self):
         self.controller.model.update_weight()
-        print("Auto update triggered.")
-        print(f"Current weight: {self.controller.model.beratSementara}")
         self.update_display()
-        self.auto_update_job = self.after(100, self.auto_update)
+        self.auto_update_job = self.after(100, self.auto_update)  # 100 ms
+
+    def update_server_status(self):
+        from model import is_server_online  # pastikan import benar
+        if is_server_online("http://10.46.7.51:8000/api/connection/status"):
+            self.status_btn.config(image=self.online_icon)
+        else:
+            self.status_btn.config(image=self.offline_icon)
+        # cek ulang tiap 2 detik
+        self.status_update_job = self.after(2000, self.update_server_status)    
 
     def update_display(self):
         data = self.controller.model.get_trash_data()

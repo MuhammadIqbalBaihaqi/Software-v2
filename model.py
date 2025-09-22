@@ -1,4 +1,5 @@
 # MultipleFiles/model.py
+from asyncio import timeout
 import requests
 from requests.exceptions import Timeout
 import subprocess
@@ -6,9 +7,21 @@ import shutil
 import os
 import time
 from random import uniform
+import csv
+from datetime import datetime
 
 # Import ArduinoSensorReader dari modul recv
 from recv import ArduinoSensorReader
+url_health = "http://10.46.7.51:8000/api/connection/status" # Pindahkan ke sini
+def is_server_online(url_health, timeout=2): # Jadikan method dari class
+    """Mengecek apakah server utama online."""
+    try:
+        print(f"--> [DEBUG] Mengirim request ke: {url_health}")
+        response = requests.get(url_health, timeout=timeout)
+        return response.status_code == 200
+    except requests.exceptions.RequestException as e:
+        print(f"!!! [DEBUG] GAGAL mengirim request: {e} !!!")
+        return False  
 
 # Optional: If you plan to use the HX711 sensor, uncomment and ensure it's installed
 # import RPi.GPIO as GPIO
@@ -38,10 +51,10 @@ class TrashDataModel:
             0:"Mulai", 1:"Sapuan", 2:"Anorganik Kering/Rosok",
             3:"Residu", 4:"Sisa Makanan"
         }
-        self.url_kirim = "http://10.135.222.174:3000/api/sensor/data"
+        self.url_kirim = "http://10.46.7.51:8000/api/sensor/data"
         self.url_csv = "http://192.168.215.174:3000/api/sensor/data" # Assuming this URL is active
         self.url_kirim1 = "http://192.168.215.174:3000/api/sensor/data" # Assuming this URL is active
-
+    
         # Inisialisasi ArduinoSensorReader
         self.arduino_reader = ArduinoSensorReader()
         self.arduino_reader.connect() # Coba koneksi saat inisialisasi model
@@ -56,14 +69,6 @@ class TrashDataModel:
     def get_trash_data(self):
         return self.trash_data
     
-    def is_server_online(self, timeout=2):
-        try:
-            response = requests.get(self.url_kirim, timeout=timeout)
-            return response.status_code == 200
-        except requests.exceptions.RequestException:
-            return False
-
-        
     def set_flow(self, flow_code):
         self.trash_data["flow"] = flow_code
         

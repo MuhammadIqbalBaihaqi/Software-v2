@@ -12,6 +12,9 @@ class TrashSortingApp(tk.Tk):
         tk.Tk.__init__(self, *args, **kwargs)
 
         self.model = TrashDataModel()  # Model integrasi
+        # # Load icon status server
+        # self.icon_online = PhotoImage(file="build/assets/online.png")
+        # self.icon_offline = PhotoImage(file="build/assets/offline.png")
 
         container = tk.Frame(self)
         container.pack(side="top", fill="both", expand=True)
@@ -30,6 +33,9 @@ class TrashSortingApp(tk.Tk):
         for frame in self.frames.values():
             frame.grid_remove()
         frame = self.frames[frame_class]
+        # Update status icon kalau page punya method update_status_icon
+        if hasattr(frame, 'update_status_icon'):
+            frame.update_status_icon()
         # Update display jika frame punya method update_display
         if hasattr(frame, 'update_display'):
             frame.update_display()
