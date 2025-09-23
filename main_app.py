@@ -1,8 +1,110 @@
+# import tkinter as tk
+# from tkinter import ttk
+# from pathlib import Path
+# from views import MainPage, LocationPage, TypePage, WeighPage
+# from model import TrashDataModel  # pastikan model.py di path yang sama
+
+# # Import PhotoImage
+# from tkinter import PhotoImage
+
+# class TrashSortingApp(tk.Tk):
+#     def __init__(self, *args, **kwargs):
+#         tk.Tk.__init__(self, *args, **kwargs)
+
+#         self.model = TrashDataModel()  # Model integrasi
+#         # # Load icon status server
+#         # self.icon_online = PhotoImage(file="build/assets/online.png")
+#         # self.icon_offline = PhotoImage(file="build/assets/offline.png")
+
+#         container = tk.Frame(self)
+#         container.pack(side="top", fill="both", expand=True)
+#         container.grid_rowconfigure(0, weight=1)
+#         container.grid_columnconfigure(0, weight=1)
+
+#         self.frames = {}
+#         for FrameClass in (MainPage, LocationPage, TypePage, WeighPage):
+#             frame = FrameClass(container, self)
+#             self.frames[FrameClass] = frame
+#             frame.grid(row=0, column=0, sticky="nsew")
+
+#         self.show_frame(MainPage)
+
+#     def show_frame(self, frame_class):
+#         for frame in self.frames.values():
+#             frame.grid_remove()
+#         frame = self.frames[frame_class]
+#         # Update status icon kalau page punya method update_status_icon
+#         if hasattr(frame, 'update_status_icon'):
+#             frame.update_status_icon()
+#         # Update display jika frame punya method update_display
+#         if hasattr(frame, 'update_display'):
+#             frame.update_display()
+#         frame.grid()
+#         frame.tkraise()
+#         if frame_class == WeighPage and hasattr(frame, 'start_auto_update'):
+#             frame.start_auto_update()
+#     # Stop auto update jika bukan WeighPage
+#         elif hasattr(frame, 'stop_auto_update'):
+#             frame.stop_auto_update()
+
+#     # ---- Navigation logic ----
+#     def set_category_and_next(self, category):
+#         self.model.trash_data["flow"] = category
+#         self.show_frame(LocationPage)
+
+#     def set_location_and_next(self, location_code, location_name):
+#         self.model.set_source(location_code)
+#         self.model.trash_data["source_name"] = location_name
+#         self.show_frame(TypePage)
+
+#     def set_type_and_next(self, type_code, type_name):
+#         self.model.set_type(type_code)
+#         self.model.trash_data["type_name"] = type_name
+#         self.show_frame(WeighPage)
+
+#     def handle_weigh(self):
+#         updated_data = self.model.update_bag_data()
+#         # Update display pada WeighPage
+#         self.frames[WeighPage].update_display()
+
+#     def handle_finish(self):
+#         self.model.send_all_data()
+#         print("udah")
+#         self.model.reset_data()
+#         self.show_frame(MainPage)
+
+#     def handle_reset(self):
+#         self.model.reset_data()
+#         #self.show_frame(MainPage)
+#         self.frames[WeighPage].update_display()
+#     def handle_undo(self):
+#         self.model.undo_bag_data()
+#         # Update display pada WeighPage
+#         self.frames[WeighPage].update_display() 
+
+#     def handle_tare(self):
+#         self.model.tare()
+#         # Update display pada WeighPage
+#         self.frames[WeighPage].update_display()
+
+
+# if __name__ == "__main__":
+#     app = TrashSortingApp()
+#     app.title("Timbangan Sampah Digital - MVC Integrated")
+#     app.geometry("1024x600")
+#     app.resizable(False, False)
+#     app.attributes('-fullscreen', True)
+#     # app.overrideredirect(True)
+#     app.mainloop()
+
+
 import tkinter as tk
 from tkinter import ttk
 from pathlib import Path
 from views import MainPage, LocationPage, TypePage, WeighPage
-from model import TrashDataModel  # pastikan model.py di path yang sama
+from model import TrashDataModel, is_server_online
+import threading
+import time
 
 # Import PhotoImage
 from tkinter import PhotoImage
@@ -12,10 +114,7 @@ class TrashSortingApp(tk.Tk):
         tk.Tk.__init__(self, *args, **kwargs)
 
         self.model = TrashDataModel()  # Model integrasi
-        # # Load icon status server
-        # self.icon_online = PhotoImage(file="build/assets/online.png")
-        # self.icon_offline = PhotoImage(file="build/assets/offline.png")
-
+        
         container = tk.Frame(self)
         container.pack(side="top", fill="both", expand=True)
         container.grid_rowconfigure(0, weight=1)
@@ -29,21 +128,53 @@ class TrashSortingApp(tk.Tk):
 
         self.show_frame(MainPage)
 
+        # ---- TAMBAHAN BARU: Mulai background thread untuk sinkronisasi ----
+        self._start_sync_thread()
+        self.protocol("WM_DELETE_WINDOW", self._on_closing) # Handle penutupan window
+
+    def _start_sync_thread(self):
+        """Membuat dan memulai thread background untuk sinkronisasi."""
+        self.sync_thread_running = True
+        # daemon=True memastikan thread berhenti saat program utama berhenti
+        self.sync_thread = threading.Thread(target=self._sync_loop, daemon=True)
+        self.sync_thread.start()
+        print("[SYNC THREAD] Agen sinkronisasi background telah dimulai.")
+
+    def _sync_loop(self):
+        """Loop yang berjalan di background untuk mengecek dan sinkronisasi data."""
+        # Beri jeda 5 detik saat start-up sebelum pengecekan pertama
+        time.sleep(5) 
+        while self.sync_thread_running:
+            try:
+                # Cek koneksi ke server
+                if is_server_online():
+                    # Jika online, coba jalankan proses sinkronisasi
+                    self.model.sync_offline_data()
+                else:
+                    print("[SYNC THREAD] Server offline, akan dicek lagi nanti.")
+            except Exception as e:
+                print(f"[SYNC THREAD] Terjadi error di loop sinkronisasi: {e}")
+            
+            # Tunggu 60 detik sebelum mencoba lagi
+            print("[SYNC THREAD] Tidur selama 60 detik...")
+            time.sleep(30)
+
+    def _on_closing(self):
+        """Fungsi yang dipanggil saat aplikasi ditutup."""
+        print("[APP] Aplikasi sedang ditutup, menghentikan background thread...")
+        self.sync_thread_running = False
+        self.destroy()
+
     def show_frame(self, frame_class):
         for frame in self.frames.values():
             frame.grid_remove()
         frame = self.frames[frame_class]
-        # Update status icon kalau page punya method update_status_icon
-        if hasattr(frame, 'update_status_icon'):
-            frame.update_status_icon()
-        # Update display jika frame punya method update_display
         if hasattr(frame, 'update_display'):
             frame.update_display()
         frame.grid()
         frame.tkraise()
         if frame_class == WeighPage and hasattr(frame, 'start_auto_update'):
             frame.start_auto_update()
-    # Stop auto update jika bukan WeighPage
         elif hasattr(frame, 'stop_auto_update'):
             frame.stop_auto_update()
 
@@ -63,28 +194,24 @@ class TrashSortingApp(tk.Tk):
         self.show_frame(WeighPage)
 
     def handle_weigh(self):
-        updated_data = self.model.update_bag_data()
-        # Update display pada WeighPage
+        self.model.update_bag_data()
         self.frames[WeighPage].update_display()
 
     def handle_finish(self):
         self.model.send_all_data()
-        print("udah")
         self.model.reset_data()
         self.show_frame(MainPage)
 
     def handle_reset(self):
         self.model.reset_data()
-        #self.show_frame(MainPage)
         self.frames[WeighPage].update_display()
+        
     def handle_undo(self):
         self.model.undo_bag_data()
-        # Update display pada WeighPage
         self.frames[WeighPage].update_display() 
 
     def handle_tare(self):
         self.model.tare()
-        # Update display pada WeighPage
         self.frames[WeighPage].update_display()
 
 
@@ -93,6 +220,5 @@ if __name__ == "__main__":
     app.title("Timbangan Sampah Digital - MVC Integrated")
     app.geometry("1024x600")
     app.resizable(False, False)
-    app.attributes('-fullscreen', True)
-    # app.overrideredirect(True)
+    # app.attributes('-fullscreen', True) # Aktifkan saat deployment
     app.mainloop()

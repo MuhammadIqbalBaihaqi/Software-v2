@@ -469,7 +469,7 @@ class WeighPage(tk.Frame):
         self.auto_update_job = self.after(100, self.auto_update)  # 100 ms
 
     def update_server_status(self):
-        from model import is_server_online  # pastikan import benar
+        #from model import is_server_online  # pastikan import benar
         if is_server_online("http://10.46.7.51:8000/api/connection/status"):
             self.status_btn.config(image=self.online_icon)
         else:

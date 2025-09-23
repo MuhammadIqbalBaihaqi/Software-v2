@@ -1,103 +1,74 @@
-# MultipleFiles/model.py
-from asyncio import timeout
 import requests
-from requests.exceptions import Timeout
-import subprocess
-import shutil
+from requests.exceptions import RequestException
 import os
-import time
-from random import uniform
 import csv
 from datetime import datetime
-
-# Import ArduinoSensorReader dari modul recv
 from recv import ArduinoSensorReader
-url_health = "http://10.46.7.51:8000/api/connection/status" # Pindahkan ke sini
-def is_server_online(url_health, timeout=2): # Jadikan method dari class
+
+# --- Fungsi Utilitas dan Variabel Global ---
+URL_HEALTH = "http://10.46.7.51:8000/api/connection/status"
+
+def is_server_online(timeout=2):
     """Mengecek apakah server utama online."""
     try:
-        print(f"--> [DEBUG] Mengirim request ke: {url_health}")
-        response = requests.get(url_health, timeout=timeout)
+        print(f"--> [DEBUG] Mengirim request ke: {URL_HEALTH}")
+        response = requests.get(URL_HEALTH, timeout=timeout)
         return response.status_code == 200
-    except requests.exceptions.RequestException as e:
+    except RequestException as e:
         print(f"!!! [DEBUG] GAGAL mengirim request: {e} !!!")
-        return False  
-
-# Optional: If you plan to use the HX711 sensor, uncomment and ensure it's installed
-# import RPi.GPIO as GPIO
-# from hx711 import HX711
+        return False
+# -------------------------------------------
 
 class TrashDataModel:
     listBerat = []
     def __init__(self):
         self.beratSementara = 0.0
         self.trash_data = {
-            "flow":0,
-            "source": 0,
-            "type": 0,
-            "bag_count": 0,
-            "weight": 0,
-            "current_weight": 0
+            "flow": 0, "source": 0, "type": 0,
+            "bag_count": 0, "weight": 0, "current_weight": 0
         }
-        self.flow = {
-            0:"Masuk", 1:"Keluar"
-        }
+        self.flow = {0: "Masuk", 1: "Keluar"}
         self.location_map = {
-            0:"Mulai", 1:"KPFT", 2:"DTNTF", 3:"DTETI",
-            4:"DTMI", 5:"DTK", 6:"DTAP", 7:"DTGD",
-            8:"DTSL", 9:"DTGL", 10:"LTM"
+            0: "Mulai", 1: "KPFT", 2: "DTNTF", 3: "DTETI",
+            4: "DTMI", 5: "DTK", 6: "DTAP", 7: "DTGD",
+            8: "DTSL", 9: "DTGL", 10: "LTM"
         }
         self.type_map = {
-            0:"Mulai", 1:"Sapuan", 2:"Anorganik Kering/Rosok",
-            3:"Residu", 4:"Sisa Makanan"
+            0: "Mulai", 1: "Sapuan", 2: "Anorganik Kering/Rosok",
+            3: "Residu", 4: "Sisa Makanan"
         }
+        
         self.url_kirim = "http://10.46.7.51:8000/api/sensor/data"
-        self.url_csv = "http://192.168.215.174:3000/api/sensor/data" # Assuming this URL is active
-        self.url_kirim1 = "http://192.168.215.174:3000/api/sensor/data" # Assuming this URL is active
-    
-        # Inisialisasi ArduinoSensorReader
+        
         self.arduino_reader = ArduinoSensorReader()
-        self.arduino_reader.connect() # Coba koneksi saat inisialisasi model
-
-            # Initialize HX711 if EMULATE_HX711 is False
-            # if not EMULATE_HX711:
-            #     self.hx = HX711(5, 6)
-            #     self.hx.set_reading_format("MSB", "MSB")
-            #     self.hx.reset()
-            #     self.hx.tare()
+        self.arduino_reader.connect()
 
     def get_trash_data(self):
         return self.trash_data
-    
+
     def set_flow(self, flow_code):
         self.trash_data["flow"] = flow_code
-        
+
     def get_flow_name(self, code):
-        return self.flow.get(code,"Unknown Flow")
-        
+        return self.flow.get(code, "Unknown Flow")
+
     def set_source(self, source_code):
         self.trash_data["source"] = source_code
 
-    def set_type(self, type_code):
-        self.trash_data["type"] = type_code
-
     def get_location_name(self, code):
         return self.location_map.get(code, "Unknown Location")
+
+    def set_type(self, type_code):
+        self.trash_data["type"] = type_code
 
     def get_type_name(self, code):
         return self.type_map.get(code, "Unknown Type")
 
     def measure_mass(self):
-        # Mengambil data berat dari ArduinoSensorReader
         val_A = self.arduino_reader.get_latest_weight()
-
-        # Jika berat sangat kecil (mendekati nol), anggap nol
-        # Ini untuk menghindari pembacaan noise kecil saat tidak ada beban
-        if abs((val_A/1000)) < 0.05: # Ambang batas 0.05 kg (50 gram)
+        if abs((val_A / 1000)) < 0.05:
             val_A = 0.0
-        
-        # Karena Arduino sudah mengirim dalam kg, tidak perlu konversi lagi
-        return round((val_A/1000), 3)
+        return round((val_A / 1000), 3)
 
     def update_bag_data(self):
         current_weight = round(self.beratSementara, 1)
@@ -108,89 +79,136 @@ class TrashDataModel:
         return self.trash_data
 
     def reset_data(self):
-        self.trash_data["bag_count"] = 0
-        self.trash_data["weight"] = 0
-        self.trash_data["current_weight"] = 0
+        self.trash_data = { "flow": 0, "source": 0, "type": 0, "bag_count": 0, "weight": 0, "current_weight": 0 }
         self.listBerat.clear()
         return self.trash_data
-    
+
     def undo_bag_data(self):
-        if self.trash_data["bag_count"] == 1 or self.trash_data["bag_count"] == 0:
-            self.trash_data["bag_count"] = 0
-            current_weight = 0
-            self.trash_data["weight"] = 0
-            self.trash_data["current_weight"] = 0
-            if self.listBerat: # Pastikan list tidak kosong sebelum pop
-                self.listBerat.pop()
-            return self.trash_data
+        if not self.listBerat:
+            return self.reset_data()
+        
+        bobot_terakhir_yang_dihapus = self.listBerat.pop()
+        self.trash_data["weight"] -= bobot_terakhir_yang_dihapus
         self.trash_data["bag_count"] -= 1
-        current_weight = self.listBerat[self.trash_data["bag_count"]]
-        self.trash_data["weight"] -= current_weight
-        self.trash_data["current_weight"] = self.listBerat[self.trash_data["bag_count"] - 1] if self.trash_data["bag_count"] > 0 else 0
-        if self.listBerat: # Pastikan list tidak kosong sebelum pop
-            self.listBerat.pop()
+        self.trash_data["current_weight"] = self.listBerat[-1] if self.listBerat else 0
         return self.trash_data
 
-    def _fd_backup(self, file, mount_path='/mnt/usb'):
-        os.makedirs(mount_path, exist_ok=True)
-        try:
-            mount_command = ['sudo', 'mount', '/dev/sda1', mount_path]
-            subprocess.run(mount_command, check=True)
-            destination_path = os.path.join(mount_path, os.path.basename(file))
-            shutil.copy(file, destination_path)
-        except subprocess.CalledProcessError as e:
-            print(f"Error during USB mount/copy: {e}")
-        finally:
-            umount_command = ['sudo', 'umount', mount_path]
-            subprocess.run(umount_command, check=True)
+    def _simpan_log_lokal_csv(self, data_transaksi, status):
+        nama_file = 'riwayat_transaksi.csv'
+        data_untuk_disimpan = data_transaksi.copy()
+        data_untuk_disimpan['timestamp'] = datetime.now().isoformat()
+        data_untuk_disimpan['status_pengiriman'] = status
+        
+        fieldnames = ['timestamp', 'flow', 'source', 'type', 'bag_count', 'weight', 'status_pengiriman']
 
-    def _simpan_csv(self):
         try:
-            data_csv = requests.get(self.url_csv)
-            with open("/home//azsig/Documents/magang/sampah_FT.csv", mode="wb") as file:
-                for chunk in data_csv.iter_content():
-                    file.write(chunk)
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching CSV: {e}")
+            file_sudah_ada = os.path.exists(nama_file)
+            with open(nama_file, mode='a', newline='') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames, extrasaction='ignore')
+                if not file_sudah_ada:
+                    writer.writeheader()
+                writer.writerow(data_untuk_disimpan)
+            print(f"--> [LOG] Transaksi dicatat ke {nama_file} dengan status '{status}'")
+        except Exception as e:
+            print(f"!!! [ERROR] Gagal mencatat log lokal: {e} !!!")
 
     def send_all_data(self):
         try:
-            requests.post(self.url_kirim, json=self.trash_data)
-       #     self._simpan_csv()
-            print("send data")
-        except requests.exceptions.RequestException as e:
-            print(f"Error sending data to main server: {e}")
+            requests.post(self.url_kirim, json=self.trash_data, timeout=5)
+            print("--> [ONLINE] Data berhasil dikirim ke server.")
+            self._simpan_log_lokal_csv(self.trash_data, 'online')
+        except RequestException as e:
+            print(f"!!! [OFFLINE] Gagal mengirim data: {e}. Mencatat sebagai offline.")
+            self._simpan_log_lokal_csv(self.trash_data, 'offline')
 
+    # --- INI METODE YANG HILANG ---
+    def sync_offline_data(self):
+        """
+        Membaca log CSV, mengirim semua data berstatus 'offline', 
+        dan memperbarui statusnya menjadi 'synced' setelah berhasil.
+        """
+        nama_file = 'riwayat_transaksi.csv'
+        if not os.path.exists(nama_file):
+            return # Jika file tidak ada, tidak ada yang perlu disinkronkan
+
+        print("--> [SYNC] Memulai pengecekan data offline...")
         
-        #try:
-        #    self._fd_backup("/home/pi/hx711py/sampah_FT.csv")
-        #except Exception as e:
-        #    print(f"Error during USB backup: {e}")
-    
+        semua_baris = []
+        baris_untuk_dikirim = []
+
+        # 1. Baca semua data dan pisahkan yang perlu dikirim
+        with open(nama_file, mode='r', newline='') as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                semua_baris.append(row)
+                if row.get('status_pengiriman') == 'offline':
+                    baris_untuk_dikirim.append(row)
+
+        if not baris_untuk_dikirim:
+            print("--> [SYNC] Tidak ada data offline yang perlu dikirim.")
+            return
+
+        print(f"--> [SYNC] Ditemukan {len(baris_untuk_dikirim)} data untuk disinkronkan.")
+        
+        berhasil_disinkronkan = False
+        # 2. Loop dan kirim data yang offline satu per satu
+        for data_offline in baris_untuk_dikirim:
+            try:
+                # Siapkan payload JSON dengan tipe data yang benar
+                payload = {
+                    "flow": int(data_offline['flow']),
+                    "source": int(data_offline['source']),
+                    "type": int(data_offline['type']),
+                    "bag_count": int(data_offline['bag_count']),
+                    "weight": float(data_offline['weight']),
+                    "timestamp_offline": data_offline['timestamp'] # Kirim timestamp asli
+                }
+                
+                requests.post(self.url_kirim, json=payload, timeout=10)
+                
+                # Jika berhasil, update status di memori
+                print(f"--> [SYNC] Berhasil mengirim data timestamp: {data_offline['timestamp']}")
+                data_offline['status_pengiriman'] = 'synced'
+                berhasil_disinkronkan = True
+
+            except RequestException as e:
+                print(f"!!! [SYNC] Koneksi terputus saat sinkronisasi. Berhenti sementara. Error: {e}")
+                break # Hentikan loop jika koneksi gagal
+            except (ValueError, KeyError) as e:
+                print(f"!!! [SYNC] Error memproses baris (mungkin data korup): {data_offline}. Error: {e}")
+                data_offline['status_pengiriman'] = 'sync_error' # Tandai sebagai error
+                berhasil_disinkronkan = True
+
+        # 3. Tulis ulang seluruh file CSV dengan status yang sudah diperbarui
+        if berhasil_disinkronkan:
+            print("--> [SYNC] Menulis ulang file log dengan status baru...")
+            try:
+                with open(nama_file, mode='w', newline='') as csvfile:
+                    if semua_baris:
+                        fieldnames = semua_baris[0].keys()
+                        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                        writer.writeheader()
+                        writer.writerows(semua_baris)
+                print("--> [SYNC] File log berhasil diperbarui.")
+            except Exception as e:
+                print(f"!!! [SYNC] Gagal menulis ulang file log: {e}")
+
     def tare(self):
-        # Panggil fungsi tare dari Arduino jika ada, atau kirim sinyal ke Arduino
-        self.send_signal_tare() # Ini akan memanggil fungsi di Arduino
-        self.beratSementara = 0.0 # Reset berat sementara di Python
+        self.send_signal_tare()
+        self.beratSementara = 0.0
         print("Tare operation completed.")
 
     def update_weight(self):
-        # Memanggil measure_mass untuk mendapatkan berat terbaru dari Arduino
         self.beratSementara = self.measure_mass()
         return self.beratSementara
-    
+
     def send_signal_tare(self):
-        # Fungsi ini akan mengirim sinyal 'tare' ke Arduino
-        # Anda perlu menambahkan logika pengiriman serial di sini
-        # Contoh: self.arduino_reader.ser.write(b'T\n')
-        # Namun, karena recv.py hanya membaca, Anda mungkin perlu menambahkan
-        # metode `send_command` di ArduinoSensorReader atau langsung di sini
         if self.arduino_reader.ser and self.arduino_reader.ser.is_open:
             try:
-                self.arduino_reader.ser.write(b'T\n') # Kirim karakter 'T' diikuti newline
+                self.arduino_reader.ser.write(b'T\n')
                 print("Sinyal 'Tare' dikirim ke Arduino.")
             except Exception as e:
                 print(f"Gagal mengirim sinyal 'Tare' ke Arduino: {e}")
         else:
             print("Arduino tidak terhubung, tidak bisa mengirim sinyal 'Tare'.")
-
 
