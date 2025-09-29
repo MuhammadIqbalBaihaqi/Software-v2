@@ -15,3 +15,4 @@ timestamp,flow,source,type,bag_count,weight,status_pengiriman
 2025-09-23T16:31:56.358574,1,1,1,1,0.0,online
 2025-09-23T16:36:22.205682,0,8,1,4,0.0,synced
 2025-09-23T16:38:27.690880,0,1,1,7,0.0,synced
+2025-09-24T07:34:28.692070,1,2,1,4,0.0,online
