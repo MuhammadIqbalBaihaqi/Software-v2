@@ -148,6 +148,9 @@ class TypePage(tk.Frame):
         flow_name = self.controller.model.get_flow_name(data.get("flow", ""))
         self.canvas.itemconfig(self.title_text_id, text=f"Pilih Jenis Sampah ({flow_name})")
 
+import tkinter as tk
+from pathlib import Path
+from tkinter import PhotoImage
 
 class WeighPage(tk.Frame):
     def __init__(self, parent, controller):
@@ -161,8 +164,7 @@ class WeighPage(tk.Frame):
         def relative_to_assets(path: str) -> Path:
             return ASSETS_PATH / Path(path)
         
-        # --- KODE NOTIFIKASI LAN TOMBOL USB DIILANGI SAKA KENE ---
-        # --- Kode kanggo latar mburi, label, lsp tetep padha ---
+        # --- Latar belakang dan label ---
         canvas.create_rectangle(30.0, 30.0, 994.0, 430.0, fill="#BEBEBE", outline="")
         label_x, colon_x, value_x, y_gap, start_y = 110, 500, 520, 60, 60
         texts = ["Tempat", "Jenis", "Kantong", "Bobot Kantong (kg)", "Total Bobot (kg)"]
@@ -172,9 +174,9 @@ class WeighPage(tk.Frame):
             canvas.create_text(colon_x, start_y + i*y_gap, anchor="nw", text=":", fill="#343434", font=("OpenSans Bold", 22, "bold"))
             self.labels[text] = canvas.create_text(value_x, start_y + i*y_gap, anchor="nw", text="", fill="#343434", font=("OpenSans Bold", 22, "bold"))
 
+        # --- Tombol Horizontal (Timbang, Selesai) ---
         button_configs = [
             {"asset": "button_1.png", "text": "Timbang", "command": self.controller.handle_weigh},
-            {"asset": "button_5.png", "text": "Tare", "command": self.controller.handle_tare},
             {"asset": "button_3.png", "text": "Selesai", "command": self.controller.handle_finish}
         ]
         button_width, button_height, button_gap = 180.0, 99.0, 60.0
@@ -192,21 +194,62 @@ class WeighPage(tk.Frame):
                 btn = tk.Button(self, text=config["text"], command=config["command"])
                 btn.place(x=x, y=y_pos, width=button_width, height=button_height)
         
-        try:
-            restart_icon = PhotoImage(file=relative_to_assets("restart.png")).subsample(5, 5)
-            restart_btn = tk.Button(self, image=restart_icon, borderwidth=0, highlightthickness=0, relief="flat", command=self.controller.handle_reset)
-            restart_btn.place(x=1024-120, y=30, width=40, height=40)
-            self.restart_icon = restart_icon
-        except:
-            pass
+        # --- Tombol Vertikal (Undo, Restart, Tare) ---
+        x_center = 974
+        
+        # Tombol paling atas: Undo
         try:
             undo_icon = PhotoImage(file=relative_to_assets("undo.png")).subsample(5, 5)
-            undo_btn = tk.Button(self, image=undo_icon, borderwidth=0, highlightthickness=0, relief="flat", command=self.controller.handle_undo)
-            undo_btn.place(x=1024-65, y=30, width=40, height=40)
+            # Menambahkan teks dan opsi compound
+            undo_btn = tk.Button(
+                self, 
+                image=undo_icon, 
+                text="Undo", 
+                compound=tk.TOP, # Menempatkan gambar di atas teks
+                font=("OpenSans", 10),
+                fg="#343434",
+                borderwidth=0, 
+                highlightthickness=0, 
+                relief="flat", 
+                command=self.controller.handle_undo
+            )
+            undo_btn.place(x=x_center - 35, y=30, width=70, height=65) # Lebar dan tinggi disesuaikan
             self.undo_icon = undo_icon
         except:
             pass
+
+        # Tombol tengah: Restart
+        try:
+            restart_icon = PhotoImage(file=relative_to_assets("restart.png")).subsample(5, 5)
+            # Menambahkan teks dan opsi compound
+            restart_btn = tk.Button(
+                self, 
+                image=restart_icon, 
+                text="Restart", 
+                compound=tk.TOP, # Menempatkan gambar di atas teks
+                font=("OpenSans", 10),
+                fg="#343434",
+                borderwidth=0, 
+                highlightthickness=0, 
+                relief="flat", 
+                command=self.controller.handle_reset
+            )
+            restart_btn.place(x=x_center - 35, y=105, width=70, height=65) # Posisi Y diubah
+            self.restart_icon = restart_icon
+        except:
+            pass
         
+        # Tombol bawah: Tare (button_5.png)
+        try:
+            tare_img = PhotoImage(file=relative_to_assets("button_5.png"))
+            tare_btn = tk.Button(self, image=tare_img, borderwidth=0, highlightthickness=0, relief="flat", command=self.controller.handle_tare)
+            tare_btn.place(x=x_center - (180.0/2), y=180, width=180.0, height=99.0) # Posisi Y diubah
+            self.button_images.append(tare_img)
+        except Exception:
+            tare_btn = tk.Button(self, text="Tare", command=self.controller.handle_tare)
+            tare_btn.place(x=x_center - (180.0/2), y=180, width=180.0, height=99.0)
+        
+        # --- Tombol Status Server ---
         self.status_btn = tk.Label(self, text="?", bg="white")
         self.status_btn.place(x=20, y=20, width=30, height=30)
         try:
@@ -249,6 +292,4 @@ class WeighPage(tk.Frame):
         self.canvas.itemconfig(self.labels["Kantong"], text=str(data.get("bag_count", 1)))
         self.canvas.itemconfig(self.labels["Bobot Kantong (kg)"], text=str(round(self.controller.model.beratSementara, 2)))
         self.canvas.itemconfig(self.labels["Total Bobot (kg)"], text=str(round(data.get("weight", 0), 2)))
-
-    # --- METHOD NOTIFIKASI DIILANGI SAKA KENE ---
 
